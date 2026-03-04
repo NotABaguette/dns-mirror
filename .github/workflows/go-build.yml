@@ -120,53 +120,61 @@ jobs:
             ext: ""
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.20"
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: "1.20"
 
-      - name: Cache Go Modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+    # <<--- Ensure go.sum exists and matches go.mod BEFORE caching and building
+    - name: Ensure modules and update go.sum
+      run: |
+        go version
+        # Tidy updates go.mod/go.sum to include all needed module checksums.
+        # This will add the missing go.sum entries referenced in your error.
+        go mod tidy
+        # Download modules into the module cache (optional but helpful).
+        go mod download
 
-      - name: Prepare dist dir
-        run: mkdir -p dist
+    - name: Cache Go Modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
-      - name: Build (cross-compile)
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          GOARM: ${{ matrix.goarm }}
-          CGO_ENABLED: 0
-        run: |
-          set -e
-          echo "Building for $GOOS / $GOARCH (GOARM=$GOARM)"
-          filename="dns-mirror_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}"
-          # Ensure we pass GOARM only when applicable
-          if [ -n "$GOARM" ]; then
-            env GOOS=$GOOS GOARCH=$GOARCH GOARM=$GOARM CGO_ENABLED=$CGO_ENABLED go build -ldflags="-s -w" -o dist/${filename} ./...
-          else
-            env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=$CGO_ENABLED go build -ldflags="-s -w" -o dist/${filename} ./...
-          fi
-          # Add a small SHA info file next to binary
-          echo "${{ github.sha }}" > dist/${filename}.gitsha
-          chmod +x dist/${filename} || true
-          ls -lh dist
+    - name: Prepare dist dir
+      run: mkdir -p dist
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: dist/*
+    - name: Build (cross-compile)
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm }}
+        CGO_ENABLED: 0
+      run: |
+        set -e
+        echo "Building for $GOOS / $GOARCH (GOARM=$GOARM)"
+        filename="dns-mirror_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}"
+        if [ -n "$GOARM" ]; then
+          env GOOS=$GOOS GOARCH=$GOARCH GOARM=$GOARM CGO_ENABLED=$CGO_ENABLED go build -ldflags="-s -w" -o dist/${filename} ./...
+        else
+          env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=$CGO_ENABLED go build -ldflags="-s -w" -o dist/${filename} ./...
+        fi
+        echo "${{ github.sha }}" > dist/${filename}.gitsha
+        chmod +x dist/${filename} || true
+        ls -lh dist
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.name }}
+        path: dist/*
 
   create-release:
     name: Create Release (publish)
