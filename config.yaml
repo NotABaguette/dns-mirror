@@ -1,0 +1,18 @@
+listen:
+  udp: "0.0.0.0:53"
+  tcp: "0.0.0.0:53"
+
+csv: "./static.csv"
+
+upstreams:
+  - "8.8.8.8:53"
+  - "1.1.1.1:53"
+
+fallbacks:
+  - "9.9.9.9:53"
+
+client_timeout_ms: 2000
+cache:
+  enabled: true
+  max_entries: 1000000
+  default_ttl: 60
